@@ -32,7 +32,7 @@ struct worker_parm {
 	int id;
 	int weight;
 };
-
+//volatile修饰符的意思是，每次用到SIG这个值都要重新从内存读，这个值是随时在变化的
 static volatile int SIG = 0;
 
 static void
@@ -257,25 +257,35 @@ bootstrap(struct skynet_context * logger, const char * cmdline) {
 void 
 skynet_start(struct skynet_config * config) {
 	// register SIGHUP for log file reopen
+	// 接管SIGHUP信号处理，这个信号量的意思是就是如果终端关闭了就向终端关联的进程发这个信号
+	// 我们接到这个信号就在定时器线程打开日志文件把日志定向到日志文件
 	struct sigaction sa;
 	sa.sa_handler = &handle_hup;
 	sa.sa_flags = SA_RESTART;
 	sigfillset(&sa.sa_mask);
 	sigaction(SIGHUP, &sa, NULL);
 
+    //如果配置了守护进程，就在这里fork一个新的进程，然后老的进程退出，新的进程就是终端shell进程完全脱离了关系成为了孤儿进程
 	if (config->daemon) {
 		if (daemon_init(config->daemon)) {
 			exit(1);
 		}
 	}
+	//利用harbor初始化全局节点编号
 	skynet_harbor_init(config->harbor);
+	//初始化handle_storage，這裡存放以後所有的actor對象
 	skynet_handle_init(config->harbor);
+	//初始化全局有消息的actor的列表
 	skynet_mq_init();
+	//初始化動態庫管理容器，並把路徑地址記錄下來，但是並沒有加載這些動態庫
 	skynet_module_init(config->module_path);
+	//初始化全局定時器容器，並沒有啟動線程
 	skynet_timer_init();
+	//初始化全局的socket管理對象，包括創建epoll句柄，管道句柄，初始化每個socket管理結構
 	skynet_socket_init();
+	//設置是否開啟性能监控
 	skynet_profile_enable(config->profile);
-
+    //创建一个actor，这个很重要我们第一次接触如何创建一个skynet的核心数据结构
 	struct skynet_context *ctx = skynet_context_new(config->logservice, config->logger);
 	if (ctx == NULL) {
 		fprintf(stderr, "Can't launch %s service\n", config->logservice);

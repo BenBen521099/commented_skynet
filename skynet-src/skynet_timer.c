@@ -45,7 +45,7 @@ struct timer {
 	uint64_t current;
 	uint64_t current_point;
 };
-
+//全局定時器容器
 static struct timer * TI = NULL;
 
 static inline struct timer_node *

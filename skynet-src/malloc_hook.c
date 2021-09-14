@@ -17,10 +17,10 @@
 
 static ATOM_SIZET _used_memory = 0;
 static ATOM_SIZET _memory_block = 0;
-
+//内存监控结构
 struct mem_data {
-	uint32_t handle;
-	ssize_t allocated;
+	uint32_t handle;//线程标识，主线程，工作线程等等
+	ssize_t allocated;//已分配的内存
 };
 
 struct mem_cookie {
@@ -280,7 +280,7 @@ size_t
 malloc_memory_block(void) {
 	return ATOM_LOAD(&_memory_block);
 }
-
+//输出所有actor的内存分配情况
 void
 dump_c_mem() {
 	int i;
@@ -295,7 +295,7 @@ dump_c_mem() {
 	}
 	skynet_error(NULL, "+total: %zdkb",total >> 10);
 }
-
+//深度copy字符串
 char *
 skynet_strdup(const char *str) {
 	size_t sz = strlen(str);
@@ -303,7 +303,7 @@ skynet_strdup(const char *str) {
 	memcpy(ret, str, sz+1);
 	return ret;
 }
-
+//重新分配内存
 void *
 skynet_lalloc(void *ptr, size_t osize, size_t nsize) {
 	if (nsize == 0) {
@@ -327,7 +327,7 @@ dump_mem_lua(lua_State *L) {
 	}
 	return 1;
 }
-
+//得到当前线程运行的actor已分配内存数
 size_t
 malloc_current_memory(void) {
 	uint32_t handle = skynet_current_handle();
@@ -340,7 +340,7 @@ malloc_current_memory(void) {
 	}
 	return 0;
 }
-
+//输出当前线程运行的actor已分配内存数
 void
 skynet_debug_memory(const char *info) {
 	// for debug use

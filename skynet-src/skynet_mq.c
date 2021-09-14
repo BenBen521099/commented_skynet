@@ -20,24 +20,24 @@
 
 struct message_queue {
 	struct spinlock lock;
-	uint32_t handle;
+	uint32_t handle;//這個指向actor在管理容器中的下標
 	int cap;
-	int head;
+	int head;//看著像雙向列表指針
 	int tail;
 	int release;
-	int in_global;
-	int overload;
-	int overload_threshold;
-	struct skynet_message *queue;
-	struct message_queue *next;
+	int in_global;//本actor是否在全局列表中
+	int overload;//過載？
+	int overload_threshold;//過載？
+	struct skynet_message *queue;//本actor所需處理的消息
+	struct message_queue *next;//鏈錶所需指針
 };
 
 struct global_queue {
-	struct message_queue *head;
+	struct message_queue *head;//雙向列表，有利於快速的加入和摘除
 	struct message_queue *tail;
 	struct spinlock lock;
 };
-
+//全局有消息需要處理的actor列表
 static struct global_queue *Q = NULL;
 
 void 
@@ -208,6 +208,7 @@ skynet_mq_push(struct message_queue *q, struct skynet_message *message) {
 	SPIN_UNLOCK(q)
 }
 
+//初始化全局有消息的actor的列表
 void 
 skynet_mq_init() {
 	struct global_queue *q = skynet_malloc(sizeof(*q));

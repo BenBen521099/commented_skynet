@@ -9,6 +9,7 @@
 #include <assert.h>
 
 static struct skynet_context * REMOTE = 0;
+//又一个全局变量，代表了这个节点的全局节点编号，24-32位
 static unsigned int HARBOR = ~0;
 
 static inline int

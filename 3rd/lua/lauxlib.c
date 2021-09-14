@@ -1108,8 +1108,8 @@ LUALIB_API void luaL_checkversion_ (lua_State *L, lua_Number ver, size_t sz) {
 #include "spinlock.h"
 
 struct codecache {
-	struct spinlock lock;
-	lua_State *L;
+	struct spinlock lock;//自旋锁
+	lua_State *L;//lua虚拟机
 };
 
 static struct codecache CC;

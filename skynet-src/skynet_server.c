@@ -39,13 +39,13 @@
 #define CHECKCALLING_DECL
 
 #endif
-
+//actor结构
 struct skynet_context {
-	void * instance;
-	struct skynet_module * mod;
+	void * instance; 
+	struct skynet_module * mod;//actor真正处理业务的dll
 	void * cb_ud;
 	skynet_cb cb;
-	struct message_queue *queue;
+	struct message_queue *queue;//actor消息列表
 	ATOM_POINTER logfile;
 	uint64_t cpu_cost;	// in microsec
 	uint64_t cpu_start;	// in microsec
@@ -53,20 +53,20 @@ struct skynet_context {
 	uint32_t handle;
 	int session_id;
 	ATOM_INT ref;
-	int message_count;
-	bool init;
+	int message_count;//当前消息数量
+	bool init;//是否初始化
 	bool endless;
 	bool profile;
 
 	CHECKCALLING_DECL
 };
-
+//节点属性
 struct skynet_node {
 	ATOM_INT total;
 	int init;
 	uint32_t monitor_exit;
-	pthread_key_t handle_key;
-	bool profile;	// default is off
+	pthread_key_t handle_key;//线程私有数据句柄
+	bool profile;	// default is off是否开启性能监控
 };
 
 static struct skynet_node G_NODE;
@@ -121,9 +121,10 @@ drop_message(struct skynet_message *msg, void *ud) {
 	// report error to the message source
 	skynet_send(NULL, source, msg->source, PTYPE_ERROR, 0, NULL, 0);
 }
-
+//返回一个上下文指针其实就是actor指针，传入服务名字和参数
 struct skynet_context * 
 skynet_context_new(const char * name, const char *param) {
+	 //在动态库管理容器中查找这个动态库结构
 	struct skynet_module * mod = skynet_module_query(name);
 
 	if (mod == NULL)
@@ -810,29 +811,34 @@ skynet_context_send(struct skynet_context * ctx, void * msg, size_t sz, uint32_t
 
 void 
 skynet_globalinit(void) {
-	ATOM_INIT(&G_NODE.total , 0);
+	ATOM_INIT(&G_NODE.total , 0);//原子化设置totla为0
 	G_NODE.monitor_exit = 0;
-	G_NODE.init = 1;
+	G_NODE.init = 1;//设置是否初始化
+	//申请一个线程的私有数据并返回句柄
 	if (pthread_key_create(&G_NODE.handle_key, NULL)) {
 		fprintf(stderr, "pthread_key_create failed");
 		exit(1);
 	}
 	// set mainthread's key
+	//把线程标识存入是有数据
 	skynet_initthread(THREAD_MAIN);
 }
 
 void 
 skynet_globalexit(void) {
+	//删除私有数据
 	pthread_key_delete(G_NODE.handle_key);
 }
 
 void
 skynet_initthread(int m) {
+	//设置数值到线程的私有数据
 	uintptr_t v = (uint32_t)(-m);
 	pthread_setspecific(G_NODE.handle_key, (void *)v);
 }
 
 void
 skynet_profile_enable(int enable) {
+	//设置全局节点属性，是否开启性能监控
 	G_NODE.profile = (bool)enable;
 }

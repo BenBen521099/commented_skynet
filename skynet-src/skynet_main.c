@@ -116,8 +116,8 @@ static const char * load_config = "\
 
 int
 main(int argc, char *argv[]) {
-	const char * config_file = NULL ;
-	if (argc > 1) {
+	const char * config_file = NULL ;//存放配置文件路径
+	if (argc > 1) {//至少有一个参数就是配置文件的路径
 		config_file = argv[1];
 	} else {
 		fprintf(stderr, "Need a config file. Please read skynet wiki : https://github.com/cloudwu/skynet/wiki/Config\n"
@@ -125,33 +125,39 @@ main(int argc, char *argv[]) {
 		return 1;
 	}
 
-	skynet_globalinit();
-	skynet_env_init();
+	skynet_globalinit();//初始化进程的全局参数
+	skynet_env_init();//初始化进程的环境参数，在这里竟然初始化了一个lua 虚拟机
 
-	sigign();
+	sigign();//获取信号SIGPIPE的控制权，为啥要这么做，因为写一个已关闭的socket句柄，会导致进程收到这个信号，如果不获取这个信号的控制权
+	         //进程将会退出，灾难吧
 
-	struct skynet_config config;
+	struct skynet_config config;//初始化一个结构，存放等会解析出来的配置
 
+//如果配置了缓存lua代码这里面初始化一个自旋锁，这个应该是避免操作时候竞争
 #ifdef LUA_CACHELIB
 	// init the lock of code cache
 	luaL_initcodecache();
 #endif
-
+    //生成一个lua虚拟机解析配置，那几行配置，用一个函数就能搞定了吧
 	struct lua_State *L = luaL_newstate();
+	//显式的加载lua的支持库，这些库应该是lua标准的代码，都改了？要显式的加载？
 	luaL_openlibs(L);	// link lua lib
-
+    //加载手写在c代码中的lua代码，真是c风格，这么随意
 	int err =  luaL_loadbufferx(L, load_config, strlen(load_config), "=[skynet config]", "t");
 	assert(err == LUA_OK);
+	//配置文件路径压栈
 	lua_pushstring(L, config_file);
-
+    //执行lua代码，读取配置文件，返回一个表
 	err = lua_pcall(L, 1, 1, 0);
 	if (err) {
 		fprintf(stderr,"%s\n",lua_tostring(L,-1));
 		lua_close(L);
 		return 1;
 	}
+	//利用刚才返回的表的值来初始化，环境结构中的lua虚拟机的全局table，
+	//这个意思是临时搞个虚拟机读取配置返回table用这个table来初始化一个持久的lua虚拟机
 	_init_env(L);
-
+    //从全局环境变量的虚拟机中，读取配置，初始化config，这个流程如此之诡异，不知道为啥
 	config.thread =  optint("thread",8);
 	config.module_path = optstring("cpath","./cservice/?.so");
 	config.harbor = optint("harbor", 1);
@@ -161,9 +167,11 @@ main(int argc, char *argv[]) {
 	config.logservice = optstring("logservice", "logger");
 	config.profile = optboolean("profile", 1);
 
+    //关闭刚才的临时虚拟机
 	lua_close(L);
-
+    //利用配置结构来开启服务
 	skynet_start(&config);
+	//走到这里进程就退出了
 	skynet_globalexit();
 
 	return 0;

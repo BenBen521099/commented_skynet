@@ -10,7 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
-
+//全局的sokcet和pipe管局對象指針
 static struct socket_server * SOCKET_SERVER = NULL;
 
 void 

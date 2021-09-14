@@ -13,12 +13,12 @@
 #define MAX_MODULE_TYPE 32
 
 struct modules {
-	int count;
+	int count;//動態庫數量
 	struct spinlock lock;
-	const char * path;
+	const char * path;//動態庫路徑
 	struct skynet_module m[MAX_MODULE_TYPE];
 };
-
+//全局的動態庫管理容器
 static struct modules * M = NULL;
 
 static void *

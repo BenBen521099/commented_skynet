@@ -17,18 +17,18 @@ struct handle_name {
 };
 
 struct handle_storage {
-	struct rwlock lock;
+	struct rwlock lock; // 读写锁
 
-	uint32_t harbor;
-	uint32_t handle_index;
-	int slot_size;
-	struct skynet_context ** slot;
+	uint32_t harbor;//节点ID
+	uint32_t handle_index;//目前使用到的索引
+	int slot_size;//数组的大小
+	struct skynet_context ** slot;//actor数组
 	
 	int name_cap;
 	int name_count;
 	struct handle_name *name;
 };
-
+//全局管理actor对象的对象指针
 static struct handle_storage *H = NULL;
 
 uint32_t

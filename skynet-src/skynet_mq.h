@@ -3,12 +3,12 @@
 
 #include <stdlib.h>
 #include <stdint.h>
-
+//actor的具體消息結構
 struct skynet_message {
-	uint32_t source;
-	int session;
-	void * data;
-	size_t sz;
+	uint32_t source;//發送的actor
+	int session;//回話ID
+	void * data;//消息內容指針
+	size_t sz;//消息大小
 };
 
 // type is encoding in skynet_message.sz high 8bit

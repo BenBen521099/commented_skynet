@@ -60,24 +60,24 @@
 #define WARNING_SIZE (1024*1024)
 
 #define USEROBJECT ((size_t)(-1))
-
+//socket寫buffer結構
 struct write_buffer {
-	struct write_buffer * next;
-	const void *buffer;
-	char *ptr;
-	size_t sz;
-	bool userobject;
+	struct write_buffer * next;//后向指针
+	const void *buffer;//buffer内存指针
+	char *ptr;//怎么还有一个指针，指向谁？
+	size_t sz;//大小
+	bool userobject;//不知道干啥的
 	uint8_t udp_address[UDP_ADDRESS_SIZE];
 };
 
 #define SIZEOF_TCPBUFFER (offsetof(struct write_buffer, udp_address[0]))
 #define SIZEOF_UDPBUFFER (sizeof(struct write_buffer))
-
+//寫buffer雙向鏈錶，我發現雲風特別喜歡雙向鏈錶
 struct wb_list {
 	struct write_buffer * head;
 	struct write_buffer * tail;
 };
-
+//socket狀態
 struct socket_stat {
 	uint64_t rtime;
 	uint64_t wtime;
@@ -87,13 +87,13 @@ struct socket_stat {
 
 struct socket {
 	uintptr_t opaque;
-	struct wb_list high;
-	struct wb_list low;
-	int64_t wb_size;
-	struct socket_stat stat;
+	struct wb_list high;//當前soket的寫buffer鏈錶
+	struct wb_list low;//當前soket的寫buffer鏈錶
+	int64_t wb_size;//寫buffer大小
+	struct socket_stat stat;//當前socket狀態
 	ATOM_ULONG sending;
-	int fd;
-	int id;
+	int fd;//socket句柄
+	int id;//在管理容器中的下標
 	ATOM_INT type;
 	uint8_t protocol;
 	bool reading;
@@ -112,20 +112,20 @@ struct socket {
 };
 
 struct socket_server {
-	volatile uint64_t time;
-	int recvctrl_fd;
-	int sendctrl_fd;
+	volatile uint64_t time;//當前時間
+	int recvctrl_fd;//管道讀取句柄
+	int sendctrl_fd;//管道發送句柄
 	int checkctrl;
-	poll_fd event_fd;
+	poll_fd event_fd;//epoll句柄
 	ATOM_INT alloc_id;
-	int event_n;
-	int event_index;
-	struct socket_object_interface soi;
-	struct event ev[MAX_EVENT];
-	struct socket slot[MAX_SOCKET];
-	char buffer[MAX_INFO];
-	uint8_t udpbuffer[MAX_UDP_PACKAGE];
-	fd_set rfds;
+	int event_n;//事件数量
+	int event_index;//事件下标
+	struct socket_object_interface soi;//不知道幹啥的
+	struct event ev[MAX_EVENT];//事件
+	struct socket slot[MAX_SOCKET];//當前socket結構，包含了socket句柄
+	char buffer[MAX_INFO];//128字節？不知道幹啥用
+	uint8_t udpbuffer[MAX_UDP_PACKAGE];//65535個int？
+	fd_set rfds;//不知道幹啥用，fd的一个集合？
 };
 
 struct request_open {
@@ -379,16 +379,19 @@ struct socket_server *
 socket_server_create(uint64_t time) {
 	int i;
 	int fd[2];
+	//創建epoll結構
 	poll_fd efd = sp_create();
 	if (sp_invalid(efd)) {
 		skynet_error(NULL, "socket-server: create event pool failed.");
 		return NULL;
 	}
+	//創建管道用於工作線程發消息用
 	if (pipe(fd)) {
 		sp_release(efd);
 		skynet_error(NULL, "socket-server: create socket pair failed.");
 		return NULL;
 	}
+	//把管道的讀句柄加入epoll
 	if (sp_add(efd, fd[0], NULL)) {
 		// add recvctrl_fd to event poll
 		skynet_error(NULL, "socket-server: can't add server fd to event pool.");
@@ -397,14 +400,14 @@ socket_server_create(uint64_t time) {
 		sp_release(efd);
 		return NULL;
 	}
-
+    //生成當前服務器的socket管理容器
 	struct socket_server *ss = MALLOC(sizeof(*ss));
-	ss->time = time;
-	ss->event_fd = efd;
-	ss->recvctrl_fd = fd[0];
-	ss->sendctrl_fd = fd[1];
+	ss->time = time;//當前時間
+	ss->event_fd = efd;//epoll句柄
+	ss->recvctrl_fd = fd[0];//管道讀句柄
+	ss->sendctrl_fd = fd[1];//管道寫句柄
 	ss->checkctrl = 1;
-
+    //初始化每个socket结构
 	for (i=0;i<MAX_SOCKET;i++) {
 		struct socket *s = &ss->slot[i];
 		ATOM_INIT(&s->type, SOCKET_TYPE_INVALID);
