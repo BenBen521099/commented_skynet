@@ -1,5 +1,5 @@
 ## ![skynet logo](https://github.com/cloudwu/skynet/wiki/image/skynet_metro.jpg)
-
+这个仓库只是个人学习用。不是云风的原版。
 Skynet is a lightweight online game framework which can be used in many other fields.
 
 ## Build
