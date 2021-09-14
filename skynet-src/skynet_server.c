@@ -41,30 +41,30 @@
 #endif
 //actor结构
 struct skynet_context {
-	void * instance; 
-	struct skynet_module * mod;//actor真正处理业务的dll
-	void * cb_ud;
-	skynet_cb cb;
+	void * instance; //动态库中生成的实际处理消息的对象指针
+	struct skynet_module * mod;//actor真正处理业务的dll指针，这个dll不实际处理消息，而是创建一个上面的对象，来处理消息
+	void * cb_ud;//回调函数的对象指针和instance是一致的
+	skynet_cb cb;//actor的回调函数指针
 	struct message_queue *queue;//actor消息列表
-	ATOM_POINTER logfile;
+	ATOM_POINTER logfile;//存放日志文件句柄
 	uint64_t cpu_cost;	// in microsec
 	uint64_t cpu_start;	// in microsec
-	char result[32];
-	uint32_t handle;
-	int session_id;
-	ATOM_INT ref;
+	char result[32];//sprintf输出用的没什么特殊作用
+	uint32_t handle;//actor在全局容器中的下标 
+	int session_id;//本actor全局的session 生成器，每次加一
+	ATOM_INT ref;//本actor被引用的计数，引用计数为0就销毁本结构
 	int message_count;//当前消息数量
 	bool init;//是否初始化
-	bool endless;
-	bool profile;
+	bool endless;//好像是检测死循环的，目前怎么用还不清楚
+	bool profile;//是否开启性能监控
 
-	CHECKCALLING_DECL
+	CHECKCALLING_DECL//声明一个自旋锁，自旋锁的名字叫calling，这句话挺可爱，calling是只小猫么？
 };
 //节点属性
 struct skynet_node {
-	ATOM_INT total;
-	int init;
-	uint32_t monitor_exit;
+	ATOM_INT total;//当前节点actor的数量
+	int init;//不知道干啥用
+	uint32_t monitor_exit;//不知道干啥用
 	pthread_key_t handle_key;//线程私有数据句柄
 	bool profile;	// default is off是否开启性能监控
 };
@@ -124,26 +124,34 @@ drop_message(struct skynet_message *msg, void *ud) {
 //返回一个上下文指针其实就是actor指针，传入服务名字和参数
 struct skynet_context * 
 skynet_context_new(const char * name, const char *param) {
-	 //在动态库管理容器中查找这个动态库结构
+	 //在动态库管理容器中查找这个动态库结构，如果没有就加载这个库
 	struct skynet_module * mod = skynet_module_query(name);
 
 	if (mod == NULL)
 		return NULL;
-
+    //调用库的创建api，实例化一个模块
 	void *inst = skynet_module_instance_create(mod);
 	if (inst == NULL)
 		return NULL;
+	//分配actor上下文结构
 	struct skynet_context * ctx = skynet_malloc(sizeof(*ctx));
+	//初始化自旋锁
 	CHECKCALLING_INIT(ctx)
-
+    //赋值module
 	ctx->mod = mod;
+	//赋值inst这个很重要module只是一个静态的类或者工厂概念，inst才是实例化的对象，真正的功能都是inst执行的
 	ctx->instance = inst;
+	//不知道干啥用
 	ATOM_INIT(&ctx->ref , 2);
+	//actor回调函数
 	ctx->cb = NULL;
+	//回调函数的实例化句柄
 	ctx->cb_ud = NULL;
+	//消息的session，每次+1
 	ctx->session_id = 0;
+	//日志文件句柄
 	ATOM_INIT(&ctx->logfile, (uintptr_t)NULL);
-
+    //是否初始化完成
 	ctx->init = false;
 	ctx->endless = false;
 
@@ -152,20 +160,25 @@ skynet_context_new(const char * name, const char *param) {
 	ctx->message_count = 0;
 	ctx->profile = G_NODE.profile;
 	// Should set to 0 first to avoid skynet_handle_retireall get an uninitialized handle
+	// 把actor放入全局容器
 	ctx->handle = 0;	
 	ctx->handle = skynet_handle_register(ctx);
+	//创建一个全局message_queue的对象并和actor相关联
 	struct message_queue * queue = ctx->queue = skynet_mq_create(ctx->handle);
 	// init function maybe use ctx->handle, so it must init at last
+	// 本actor引用计数+1，我猜是因为message_queue里面记了actor的handle
 	context_inc();
-
+    //测试自旋calling锁
 	CHECKCALLING_BEGIN(ctx)
+	//利用模块的初始化函数来初始化对象，对象是模块的创建函数创建出来的
 	int r = skynet_module_instance_init(mod, inst, ctx, param);
 	CHECKCALLING_END(ctx)
 	if (r == 0) {
 		struct skynet_context * ret = skynet_context_release(ctx);
 		if (ret) {
-			ctx->init = true;
+			ctx->init = true;//初始化完成
 		}
+		//把这个全局message_queue对象放入全局列表 
 		skynet_globalmq_push(queue);
 		if (ret) {
 			skynet_error(ret, "LAUNCH %s %s", name, param ? param : "");
@@ -791,7 +804,7 @@ uint32_t
 skynet_context_handle(struct skynet_context *ctx) {
 	return ctx->handle;
 }
-
+//设置actor的回调函数
 void 
 skynet_callback(struct skynet_context * context, void *ud, skynet_cb cb) {
 	context->cb = cb;

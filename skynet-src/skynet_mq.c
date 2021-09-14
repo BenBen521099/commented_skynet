@@ -21,14 +21,14 @@
 struct message_queue {
 	struct spinlock lock;
 	uint32_t handle;//這個指向actor在管理容器中的下標
-	int cap;
+	int cap;//本actor消息容器大小
 	int head;//看著像雙向列表指針
 	int tail;
 	int release;
 	int in_global;//本actor是否在全局列表中
-	int overload;//過載？
-	int overload_threshold;//過載？
-	struct skynet_message *queue;//本actor所需處理的消息
+	int overload;//当前队列长度
+	int overload_threshold;//最大过载指标
+	struct skynet_message *queue;//本actor所需處理的消息是个数组
 	struct message_queue *next;//鏈錶所需指針
 };
 
@@ -73,7 +73,7 @@ skynet_globalmq_pop() {
 
 	return mq;
 }
-
+//创建一个全局message_queue的对象并和actor关联
 struct message_queue * 
 skynet_mq_create(uint32_t handle) {
 	struct message_queue *q = skynet_malloc(sizeof(*q));
@@ -85,7 +85,7 @@ skynet_mq_create(uint32_t handle) {
 	// When the queue is create (always between service create and service init) ,
 	// set in_global flag to avoid push it to global queue .
 	// If the service init success, skynet_context_new will call skynet_mq_push to push it to global queue.
-	q->in_global = MQ_IN_GLOBAL;
+	q->in_global = MQ_IN_GLOBAL;//先设置为在全局消息actor列表中，避免在初始化的时候被加入列表这是个小技巧，我并不觉得这样做很好，应该有更显式的做法
 	q->release = 0;
 	q->overload = 0;
 	q->overload_threshold = MQ_OVERLOAD;

@@ -24,13 +24,14 @@ struct handle_storage {
 	int slot_size;//数组的大小
 	struct skynet_context ** slot;//actor数组
 	
-	int name_cap;
-	int name_count;
-	struct handle_name *name;
+	int name_cap;//handle_name数组大小
+	int name_count;//目前存储的名字数量
+	struct handle_name *name;//handle_name的数组，数组大小为name_cap
 };
 //全局管理actor对象的对象指针
 static struct handle_storage *H = NULL;
 
+//把actor对象放入全局管理容器，如果容器不够大就以2倍大小递增，返回actor在容器中的下标
 uint32_t
 skynet_handle_register(struct skynet_context *ctx) {
 	struct handle_storage *s = H;
@@ -184,6 +185,7 @@ skynet_handle_findname(const char * name) {
 
 static void
 _insert_name_before(struct handle_storage *s, char *name, uint32_t handle, int before) {
+	//大小不够，重新分配
 	if (s->name_count >= s->name_cap) {
 		s->name_cap *= 2;
 		assert(s->name_cap <= MAX_SLOT_SIZE);
@@ -212,6 +214,7 @@ static const char *
 _insert_name(struct handle_storage *s, const char * name, uint32_t handle) {
 	int begin = 0;
 	int end = s->name_count - 1;
+	//二分查找
 	while (begin<=end) {
 		int mid = (begin+end)/2;
 		struct handle_name *n = &s->name[mid];
@@ -226,7 +229,7 @@ _insert_name(struct handle_storage *s, const char * name, uint32_t handle) {
 		}
 	}
 	char * result = skynet_strdup(name);
-
+    //没有找到，插入，插入时候涉及到重新分配数组大小
 	_insert_name_before(s, result, handle, begin);
 
 	return result;

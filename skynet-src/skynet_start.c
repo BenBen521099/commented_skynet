@@ -18,11 +18,12 @@
 #include <string.h>
 #include <signal.h>
 
+//监控线程的结构
 struct monitor {
-	int count;
-	struct skynet_monitor ** m;
+	int count;//工作线程数量
+	struct skynet_monitor ** m;//每个工作线程对应一个skynet_monitor结构体存放工作线程的监控状态
 	pthread_cond_t cond;
-	pthread_mutex_t mutex;
+	pthread_mutex_t mutex;//互斥锁
 	int sleep;
 	int quit;
 };
@@ -41,7 +42,7 @@ handle_hup(int signal) {
 		SIG = 1;
 	}
 }
-
+//检查当前节点actor数量
 #define CHECK_ABORT if (skynet_context_total()==0) break;
 
 static void
@@ -69,6 +70,7 @@ thread_socket(void *p) {
 		if (r==0)
 			break;
 		if (r<0) {
+			//actor数量为0就退出线程
 			CHECK_ABORT
 			continue;
 		}
@@ -102,6 +104,7 @@ thread_monitor(void *p) {
 			skynet_monitor_check(m->m[i]);
 		}
 		for (i=0;i<5;i++) {
+			//actor数量为0就退出线程
 			CHECK_ABORT
 			sleep(1);
 		}
@@ -132,6 +135,7 @@ thread_timer(void *p) {
 	for (;;) {
 		skynet_updatetime();
 		skynet_socket_updatetime();
+		//actor数量为0就退出线程
 		CHECK_ABORT
 		wakeup(m,m->count-1);
 		usleep(2500);
@@ -181,7 +185,7 @@ thread_worker(void *p) {
 
 static void
 start(int thread) {
-	pthread_t pid[thread+3];
+	pthread_t pid[thread+3];//除了工作线程，还有监控，定时器，网络三个线程
 
 	struct monitor *m = skynet_malloc(sizeof(*m));
 	memset(m, 0, sizeof(*m));
@@ -246,6 +250,7 @@ bootstrap(struct skynet_context * logger, const char * cmdline) {
 	} else {
 		args[0] = '\0';
 	}
+	//在创建一个actor
 	struct skynet_context *ctx = skynet_context_new(name, args);
 	if (ctx == NULL) {
 		skynet_error(NULL, "Bootstrap error : %s\n", cmdline);
@@ -291,9 +296,9 @@ skynet_start(struct skynet_config * config) {
 		fprintf(stderr, "Can't launch %s service\n", config->logservice);
 		exit(1);
 	}
-
+    //把名字和handle存入全局容器
 	skynet_handle_namehandle(skynet_context_handle(ctx), "logger");
-
+    //根据bootstrap参数再创建一个actor
 	bootstrap(ctx, config->bootstrap);
 
 	start(config->thread);

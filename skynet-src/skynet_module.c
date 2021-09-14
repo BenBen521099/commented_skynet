@@ -21,6 +21,7 @@ struct modules {
 //全局的動態庫管理容器
 static struct modules * M = NULL;
 
+//根据文件路径名和文件名加载动态库
 static void *
 _try_open(struct modules *m, const char * name) {
 	const char *l;
@@ -98,7 +99,7 @@ open_sym(struct skynet_module *mod) {
 
 	return mod->init == NULL;
 }
-
+//更具动态库名字加载动态库
 struct skynet_module * 
 skynet_module_query(const char * name) {
 	struct skynet_module * result = _query(name);
@@ -111,11 +112,11 @@ skynet_module_query(const char * name) {
 
 	if (result == NULL && M->count < MAX_MODULE_TYPE) {
 		int index = M->count;
-		void * dl = _try_open(M,name);
+		void * dl = _try_open(M,name);//加载动态库
 		if (dl) {
-			M->m[index].name = name;
-			M->m[index].module = dl;
-
+			M->m[index].name = name;//保存名字
+			M->m[index].module = dl;//保存动态库句柄
+            //得到动态库的标准四个函数，并赋值到管理模块
 			if (open_sym(&M->m[index]) == 0) {
 				M->m[index].name = skynet_strdup(name);
 				M->count ++;
