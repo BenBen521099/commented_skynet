@@ -35,6 +35,8 @@ skynet_socket_updatetime() {
 }
 
 // mainloop thread
+//type 消息类型
+//padding 是否把数据复制进消息结构体还是只复制数据的指针，这是个深度拷贝的问题
 static void
 forward_message(int type, bool padding, struct socket_message * result) {
 	struct skynet_socket_message *sm;
@@ -81,37 +83,39 @@ skynet_socket_poll() {
 	assert(ss);
 	struct socket_message result;
 	int more = 1;
+	//处理管道事件，主要是逻辑层往下次发送的控制命令如对外连接，退出线程，发送数据
+	//处理epoll事件，一次处理一个，剩下的记下来，下次处理
 	int type = socket_server_poll(ss, &result, &more);
 	switch (type) {
 	case SOCKET_EXIT:
-		return 0;
-	case SOCKET_DATA:
+		return 0;//socket线程退出
+	case SOCKET_DATA://socket收到数据
 		forward_message(SKYNET_SOCKET_TYPE_DATA, false, &result);
 		break;
-	case SOCKET_CLOSE:
+	case SOCKET_CLOSE://socket关闭
 		forward_message(SKYNET_SOCKET_TYPE_CLOSE, false, &result);
 		break;
-	case SOCKET_OPEN:
+	case SOCKET_OPEN://socket打开
 		forward_message(SKYNET_SOCKET_TYPE_CONNECT, true, &result);
 		break;
-	case SOCKET_ERR:
+	case SOCKET_ERR://socket出错
 		forward_message(SKYNET_SOCKET_TYPE_ERROR, true, &result);
 		break;
-	case SOCKET_ACCEPT:
+	case SOCKET_ACCEPT://socket接受新的连接
 		forward_message(SKYNET_SOCKET_TYPE_ACCEPT, true, &result);
 		break;
-	case SOCKET_UDP:
+	case SOCKET_UDP://socket收到UDP数据？
 		forward_message(SKYNET_SOCKET_TYPE_UDP, false, &result);
 		break;
-	case SOCKET_WARNING:
+	case SOCKET_WARNING://socket收到警告
 		forward_message(SKYNET_SOCKET_TYPE_WARNING, false, &result);
 		break;
 	default:
 		skynet_error(NULL, "Unknown socket message type %d.",type);
-		return -1;
+		return -1;// socket线程检查是否需要退出
 	}
 	if (more) {
-		return -1;
+		return -1;// socket线程检查是否需要退出
 	}
 	return 1;
 }

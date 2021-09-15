@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include "socket_info.h"
 #include "socket_buffer.h"
-
+//socket事件类型
 #define SOCKET_DATA 0
 #define SOCKET_CLOSE 1
 #define SOCKET_OPEN 2
@@ -21,8 +21,9 @@
 struct socket_server;
 
 struct socket_message {
-	int id;
-	uintptr_t opaque;
+	int id;//有时间的socket id
+	uintptr_t opaque;//actor的句柄
+	//对于accept操作这个属性是新的socket id，对于读操作这个属性是数据大小
 	int ud;	// for accept, ud is new connection id ; for data, ud is size of data 
 	char * data;
 };

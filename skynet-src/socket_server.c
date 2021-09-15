@@ -19,6 +19,7 @@
 
 #define MAX_INFO 128
 // MAX_SOCKET will be 2^MAX_SOCKET_P
+// socket目前所处的状态
 #define MAX_SOCKET_P 16
 #define MAX_EVENT 64
 #define MIN_READ_BUFFER 64
@@ -87,14 +88,14 @@ struct socket_stat {
 
 struct socket {
 	uintptr_t opaque;
-	struct wb_list high;//當前soket的寫buffer鏈錶
-	struct wb_list low;//當前soket的寫buffer鏈錶
+	struct wb_list high;//當前高优先级soket的寫buffer鏈錶
+	struct wb_list low;//當前低优先级soket的寫buffer鏈錶
 	int64_t wb_size;//寫buffer大小
 	struct socket_stat stat;//當前socket狀態
 	ATOM_ULONG sending;
 	int fd;//socket句柄
 	int id;//在管理容器中的下標
-	ATOM_INT type;
+	ATOM_INT type;//当前socket所处的状态,如SOCKET_TYPE_PLISTEN
 	uint8_t protocol;
 	bool reading;
 	bool writing;
@@ -115,24 +116,24 @@ struct socket_server {
 	volatile uint64_t time;//當前時間
 	int recvctrl_fd;//管道讀取句柄
 	int sendctrl_fd;//管道發送句柄
-	int checkctrl;
+	int checkctrl;//是否检查管道是否有数据的旗标
 	poll_fd event_fd;//epoll句柄
 	ATOM_INT alloc_id;
-	int event_n;//事件数量
-	int event_index;//事件下标
+	int event_n;//event_n总共返回了多少个事件，把临时的变量放入全局结构中来，这种写法真是不敢苟同
+	int event_index;//event_index目前处理到了多少个，把临时的变量放入全局结构中来，这种写法真是不敢苟同
 	struct socket_object_interface soi;//不知道幹啥的
 	struct event ev[MAX_EVENT];//事件
 	struct socket slot[MAX_SOCKET];//當前socket結構，包含了socket句柄
 	char buffer[MAX_INFO];//128字節？不知道幹啥用
 	uint8_t udpbuffer[MAX_UDP_PACKAGE];//65535個int？
-	fd_set rfds;//不知道幹啥用，fd的一个集合？
+	fd_set rfds;//用select检查recvctrl_fd是否有数据时候返回的句柄集合
 };
 
 struct request_open {
 	int id;
 	int port;
 	uintptr_t opaque;
-	char host[1];
+	char host[1];//这个不是标识地址只有一个字节，而是表示host是这个地址字符串的首地址，这种写法不是c程序员真不理解
 };
 
 struct request_send {
@@ -187,7 +188,7 @@ struct request_udp {
 	int family;
 	uintptr_t opaque;
 };
-
+//管道操作码
 /*
 	The first byte is TYPE
 
@@ -205,7 +206,7 @@ struct request_udp {
 	C set udp address
 	Q query info
  */
-
+//进程内消息总线的数据结构
 struct request_package {
 	uint8_t header[8];	// 6 bytes dummy
 	union {
@@ -600,6 +601,7 @@ stat_write(struct socket_server *ss, struct socket *s, int n) {
 }
 
 // return -1 when connecting
+// 打开一个socket对外连接
 static int
 open_socket(struct socket_server *ss, struct request_open * request, struct socket_message *result) {
 	int id = request->id;
@@ -618,12 +620,13 @@ open_socket(struct socket_server *ss, struct request_open * request, struct sock
 	ai_hints.ai_family = AF_UNSPEC;
 	ai_hints.ai_socktype = SOCK_STREAM;
 	ai_hints.ai_protocol = IPPROTO_TCP;
-
+    //根据名字获得地址列表
 	status = getaddrinfo( request->host, port, &ai_hints, &ai_list );
 	if ( status != 0 ) {
 		result->data = (void *)gai_strerror(status);
 		goto _failed_getaddrinfo;
 	}
+	//根据地址列表，做连接操作
 	int sock= -1;
 	for (ai_ptr = ai_list; ai_ptr != NULL; ai_ptr = ai_ptr->ai_next ) {
 		sock = socket( ai_ptr->ai_family, ai_ptr->ai_socktype, ai_ptr->ai_protocol );
@@ -645,7 +648,7 @@ open_socket(struct socket_server *ss, struct request_open * request, struct sock
 		result->data = strerror(errno);
 		goto _failed;
 	}
-
+    //新的socket加入epoll的监控队列
 	ns = new_fd(ss, id, sock, PROTOCOL_TCP, request->opaque, true);
 	if (ns == NULL) {
 		close(sock);
@@ -1004,6 +1007,7 @@ trigger_write(struct socket_server *ss, struct request_send * request, struct so
 		If write a part, append the rest part to high list. (Even priority is PRIORITY_LOW)
 	Else append package to high (PRIORITY_HIGH) or low (PRIORITY_LOW) list.
  */
+ //这里面只是把待发送数据放入了对应socket结构的发送缓冲区，而且还分了高优先级和低优先级.并没有真的发送出去数据
 static int
 send_socket(struct socket_server *ss, struct request_send * request, struct socket_message *result, int priority, const uint8_t *udp_address) {
 	int id = request->id;
@@ -1249,7 +1253,7 @@ block_readpipe(int pipefd, void *buffer, int sz) {
 		return;
 	}
 }
-
+//检测读管道是否有数据
 static int
 has_cmd(struct socket_server *ss) {
 	struct timeval tv = {0,0};
@@ -1341,6 +1345,7 @@ static int
 ctrl_cmd(struct socket_server *ss, struct socket_message *result) {
 	int fd = ss->recvctrl_fd;
 	// the length of message is one byte, so 256+8 buffer size is enough.
+	// 管道的消息结构第一个字节消息类型，第二个字节消息大小，后面跟着消息数据
 	uint8_t buffer[256];
 	uint8_t header[2];
 	block_readpipe(fd, header, sizeof(header));
@@ -1349,32 +1354,32 @@ ctrl_cmd(struct socket_server *ss, struct socket_message *result) {
 	block_readpipe(fd, buffer, len);
 	// ctrl command only exist in local fd, so don't worry about endian.
 	switch (type) {
-	case 'R':
+	case 'R'://恢复socket
 		return resume_socket(ss,(struct request_resumepause *)buffer, result);
-	case 'S':
+	case 'S'://暂定读，设置epoll对来到的数据不要提示
 		return pause_socket(ss,(struct request_resumepause *)buffer, result);
-	case 'B':
+	case 'B'://绑定，只是把socket设置为SOCKET_TYPE_BIND并加入epoll
 		return bind_socket(ss,(struct request_bind *)buffer, result);
-	case 'L':
+	case 'L'://监听端口,这个只是把socket设置为SOCKET_TYPE_PLISTEN并加入epoll
 		return listen_socket(ss,(struct request_listen *)buffer, result);
-	case 'K':
+	case 'K'://关闭一个socket
 		return close_socket(ss,(struct request_close *)buffer, result);
-	case 'O':
+	case 'O'://打开一个soket对外连接
 		return open_socket(ss, (struct request_open *)buffer, result);
-	case 'X':
+	case 'X'://退出线程
 		result->opaque = 0;
 		result->id = 0;
 		result->ud = 0;
 		result->data = NULL;
 		return SOCKET_EXIT;
-	case 'W':
+	case 'W'://设置epoll允许写
 		return trigger_write(ss, (struct request_send *)buffer, result);
-	case 'D':
+	case 'D'://高优先级或者低优先级数据发送，这个里面只是把数据复制到socket发送缓冲区，并没有真正发送
 	case 'P': {
 		int priority = (type == 'D') ? PRIORITY_HIGH : PRIORITY_LOW;
 		struct request_send * request = (struct request_send *) buffer;
-		int ret = send_socket(ss, request, result, priority, NULL);
-		dec_sending_ref(ss, request->id);
+		int ret = send_socket(ss, request, result, priority, NULL);//放入缓冲区
+		dec_sending_ref(ss, request->id);//设置socket结构为发送状态
 		return ret;
 	}
 	case 'A': {
@@ -1383,7 +1388,7 @@ ctrl_cmd(struct socket_server *ss, struct socket_message *result) {
 	}
 	case 'C':
 		return set_udp_address(ss, (struct request_setudp *)buffer, result);
-	case 'T':
+	case 'T'://对socket做一些控制性的设置
 		setopt_socket(ss, (struct request_setopt *)buffer);
 		return -1;
 	case 'U':
@@ -1402,6 +1407,7 @@ static int
 forward_message_tcp(struct socket_server *ss, struct socket *s, struct socket_lock *l, struct socket_message * result) {
 	int sz = s->p.size;
 	char * buffer = MALLOC(sz);
+	//这个地方应该先获得下socket的数据大小然后再read,这种根据s->p.size盲read，有点盲目
 	int n = (int)read(s->fd, buffer, sz);
 	if (n<0) {
 		FREE(buffer);
@@ -1633,21 +1639,28 @@ clear_closed_event(struct socket_server *ss, struct socket_message * result, int
 }
 
 // return type
+ //返回一个操作码和操作对应的数据result
 int 
 socket_server_poll(struct socket_server *ss, struct socket_message * result, int * more) {
+	//虽然看起来是一个死循环但是，每次只处理一个epoll事件，然后把得到的时候存起来，下次进入这个函数的时候再处理
+	//这个for循环是为了把管道事件处理完，epoll每次只处理一个事件，看起来思路挺那啥的
 	for (;;) {
-		if (ss->checkctrl) {
-			if (has_cmd(ss)) {
-				int type = ctrl_cmd(ss, result);
+		if (ss->checkctrl) {//检查管道是否有数据
+			if (has_cmd(ss)) {//如果有数据，就处理数据，如果没有就把checkctrl设置为0
+				//一次循环处理一个，直到处理完，或者报错
+				int type = ctrl_cmd(ss, result); //处理管道中的数据，主要是逻辑层对网络层的控制命令如设置socket状态，发送数据，关闭socket或者退出网络线程等
 				if (type != -1) {
 					clear_closed_event(ss, result, type);
 					return type;
 				} else
 					continue;
 			} else {
-				ss->checkctrl = 0;
+				ss->checkctrl = 0;//这个旗标应该是为了在调用select系统API之前做一个前置的检查，因为调用系统api的代价是很大的
 			}
 		}
+		//event_n总共返回了多少个事件
+		//event_index目前处理到了多少个
+		//如果已经处理完了，再wait一次
 		if (ss->event_index == ss->event_n) {
 			ss->event_n = sp_wait(ss->event_fd, ss->ev, MAX_EVENT);
 			ss->checkctrl = 1;
@@ -1672,6 +1685,7 @@ socket_server_poll(struct socket_server *ss, struct socket_message * result, int
 		}
 		struct socket_lock l;
 		socket_lock_init(s, &l);
+		//首先处理socket的逻辑状态，这个状态是逻辑代码设置的不是epoll设置的
 		switch (ATOM_LOAD(&s->type)) {
 		case SOCKET_TYPE_CONNECTING:
 			return report_connect(ss, s, &l, result);
@@ -1688,12 +1702,12 @@ socket_server_poll(struct socket_server *ss, struct socket_message * result, int
 		case SOCKET_TYPE_INVALID:
 			skynet_error(NULL, "socket-server: invalid socket");
 			break;
-		default:
+		default://真正处理epoll返回状态，其实真的的网络代码没多少，搞了一堆的逻辑代码，新手看这些代码很容易陷入无尽的细节中，真正的核心逻辑没几行
 			if (e->read) {
 				int type;
 				if (s->protocol == PROTOCOL_TCP) {
-					type = forward_message_tcp(ss, s, &l, result);
-					if (type == SOCKET_MORE) {
+					type = forward_message_tcp(ss, s, &l, result); //接受tcp数据，网络方面最最重要的函数就是他了，多么的不起眼
+					if (type == SOCKET_MORE) {//这个地方之所以敢返回是因为使用了水平触发模式，如果有数据没有读完下次还会触发
 						--ss->event_index;
 						return SOCKET_DATA;
 					}
@@ -1715,7 +1729,7 @@ socket_server_poll(struct socket_server *ss, struct socket_message * result, int
 				return type;
 			}
 			if (e->write) {
-				int type = send_buffer(ss, s, &l, result);
+				int type = send_buffer(ss, s, &l, result);//真正的发送数据的地方，最最重要的函数，忙活了半天就是为了把数据发出去
 				if (type == -1)
 					break;
 				return type;

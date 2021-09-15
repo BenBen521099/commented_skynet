@@ -28,7 +28,7 @@ sp_release(int efd) {
 static int 
 sp_add(int efd, int sock, void *ud) {
 	struct epoll_event ev;
-	ev.events = EPOLLIN;
+	ev.events = EPOLLIN;//居然使用效率更低的水平触发模式
 	ev.data.ptr = ud;
 	if (epoll_ctl(efd, EPOLL_CTL_ADD, sock, &ev) == -1) {
 		return 1;

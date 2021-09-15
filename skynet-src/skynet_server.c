@@ -274,7 +274,7 @@ skynet_isremote(struct skynet_context * ctx, uint32_t handle, int * harbor) {
 
 static void
 dispatch_message(struct skynet_context *ctx, struct skynet_message *msg) {
-	assert(ctx->init);
+	assert(ctx->init);//必须初始化完成之后
 	CHECKCALLING_BEGIN(ctx)
 	pthread_setspecific(G_NODE.handle_key, (void *)(uintptr_t)(ctx->handle));
 	int type = msg->sz >> MESSAGE_TYPE_SHIFT;
@@ -291,10 +291,10 @@ dispatch_message(struct skynet_context *ctx, struct skynet_message *msg) {
 		uint64_t cost_time = skynet_thread_time() - ctx->cpu_start;
 		ctx->cpu_cost += cost_time;
 	} else {
-		reserve_msg = ctx->cb(ctx, ctx->cb_ud, type, msg->session, msg->source, msg->data, sz);
+		reserve_msg = ctx->cb(ctx, ctx->cb_ud, type, msg->session, msg->source, msg->data, sz);//调用actor回调指针处理消息
 	}
 	if (!reserve_msg) {
-		skynet_free(msg->data);
+		skynet_free(msg->data);//释放消息
 	}
 	CHECKCALLING_END(ctx)
 }
@@ -308,19 +308,19 @@ skynet_context_dispatchall(struct skynet_context * ctx) {
 		dispatch_message(ctx, &msg);
 	}
 }
-
+//从全局列表中获取消息并处理，这个应该是整个架构最重要的逻辑处理函数了，架构的灵魂
 struct message_queue * 
 skynet_context_message_dispatch(struct skynet_monitor *sm, struct message_queue *q, int weight) {
 	if (q == NULL) {
-		q = skynet_globalmq_pop();
+		q = skynet_globalmq_pop();//全局列表中弹出一个，如果为空就直接退出
 		if (q==NULL)
 			return NULL;
 	}
 
-	uint32_t handle = skynet_mq_handle(q);
+	uint32_t handle = skynet_mq_handle(q);//得到对应的actor句柄
 
-	struct skynet_context * ctx = skynet_handle_grab(handle);
-	if (ctx == NULL) {
+	struct skynet_context * ctx = skynet_handle_grab(handle);//通过句柄得到actor对象实例
+	if (ctx == NULL) {//如果找不到actor对象，直接删掉这个消息
 		struct drop_t d = { handle };
 		skynet_mq_release(q, drop_message, &d);
 		return skynet_globalmq_pop();
@@ -330,10 +330,10 @@ skynet_context_message_dispatch(struct skynet_monitor *sm, struct message_queue 
 	struct skynet_message msg;
 
 	for (i=0;i<n;i++) {
-		if (skynet_mq_pop(q,&msg)) {
+		if (skynet_mq_pop(q,&msg)) {//如果没有消息了，释放对actor对象的引用然后返回
 			skynet_context_release(ctx);
 			return skynet_globalmq_pop();
-		} else if (i==0 && weight >= 0) {
+		} else if (i==0 && weight >= 0) {//根据权重设置n的个数
 			n = skynet_mq_length(q);
 			n >>= weight;
 		}
@@ -342,19 +342,19 @@ skynet_context_message_dispatch(struct skynet_monitor *sm, struct message_queue 
 			skynet_error(ctx, "May overload, message queue length = %d", overload);
 		}
 
-		skynet_monitor_trigger(sm, msg.source , handle);
+		skynet_monitor_trigger(sm, msg.source , handle);//调用两次为了让监控线程做死循环判断
 
-		if (ctx->cb == NULL) {
+		if (ctx->cb == NULL) {//如果actor没有回调函数指针直接释放消息
 			skynet_free(msg.data);
 		} else {
-			dispatch_message(ctx, &msg);
+			dispatch_message(ctx, &msg);//处理消息，核心函数
 		}
 
 		skynet_monitor_trigger(sm, 0,0);
 	}
 
 	assert(q == ctx->queue);
-	struct message_queue *nq = skynet_globalmq_pop();
+	struct message_queue *nq = skynet_globalmq_pop();//把下一个全局消息弹出来，把刚才的压进去，因为根据权重，一次不一定处理完，没处理完就要下次再处理
 	if (nq) {
 		// If global mq is not empty , push q back, and return next queue (nq)
 		// Else (global mq is empty or block, don't push q back, and return q again (for next dispatch)

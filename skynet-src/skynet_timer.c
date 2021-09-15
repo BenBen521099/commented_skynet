@@ -41,9 +41,9 @@ struct timer {
 	struct link_list t[4][TIME_LEVEL];
 	struct spinlock lock;
 	uint32_t time;
-	uint32_t starttime;
-	uint64_t current;
-	uint64_t current_point;
+	uint32_t starttime;//定时器开始时间
+	uint64_t current;//累计时间差
+	uint64_t current_point;//上一次触发的时间戳
 };
 //全局定時器容器
 static struct timer * TI = NULL;
@@ -161,17 +161,22 @@ timer_execute(struct timer *T) {
 		SPIN_LOCK(T);
 	}
 }
-
+//定时器算法解释
+//分为5个级别，第一级256个嘀嗒会到期的，这个级别每次嘀嗒都要判断是否有到期的计时器需要执行
+//然后第二个级别256-512嘀嗒到期的，依次类推，这样的话每次循环就不需要便利所有的定时器
+//越往后级别的遍历的频率越低，节省资源
 static void 
 timer_update(struct timer *T) {
 	SPIN_LOCK(T);
 
 	// try to dispatch timeout 0 (rare condition)
+	// 执行到期的计时器
 	timer_execute(T);
 
 	// shift time first, and then dispatch timer message
+	// 便利计时器往高级别移动
 	timer_shift(T);
-
+    // 执行到期的计时器
 	timer_execute(T);
 
 	SPIN_UNLOCK(T);
@@ -231,11 +236,12 @@ systime(uint32_t *sec, uint32_t *cs) {
 	*sec = (uint32_t)ti.tv_sec;
 	*cs = (uint32_t)(ti.tv_nsec / 10000000);
 }
-
+//精度为10毫秒，不受真是时间影响，就是gettickcount 
 static uint64_t
 gettime() {
 	uint64_t t;
 	struct timespec ti;
+	//CLOCK_MONOTONIC:从系统启动这一刻起开始计时,不受系统时间被用户改变的影响
 	clock_gettime(CLOCK_MONOTONIC, &ti);
 	t = (uint64_t)ti.tv_sec * 100;
 	t += ti.tv_nsec / 10000000;
@@ -244,17 +250,17 @@ gettime() {
 
 void
 skynet_updatetime(void) {
-	uint64_t cp = gettime();
+	uint64_t cp = gettime();//取得毫秒级时间戳
 	if(cp < TI->current_point) {
 		skynet_error(NULL, "time diff error: change from %lld to %lld", cp, TI->current_point);
 		TI->current_point = cp;
-	} else if (cp != TI->current_point) {
+	} else if (cp != TI->current_point) {//当前时间和上一次触发的时间不同
 		uint32_t diff = (uint32_t)(cp - TI->current_point);
 		TI->current_point = cp;
-		TI->current += diff;
+		TI->current += diff;//累加时间差
 		int i;
-		for (i=0;i<diff;i++) {
-			timer_update(TI);
+		for (i=0;i<diff;i++) {//以10毫秒为单位调用定时器
+			timer_update(TI);//便利当时其容器，执行到期的定时器，没到期的往高级别定时器容器移动
 		}
 	}
 }
