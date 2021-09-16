@@ -75,7 +75,8 @@ sp_nonblocking(int fd) {
 	if ( -1 == flag ) {
 		return;
 	}
-
+    //在读操作时，如果读不到数据，O_NDELAY会使I/O函数马上返回0，但这又衍生出一个问题，因为读取到文件末尾(EOF)时返回的也是0，这样无法区分是哪种情况。因此，O_NONBLOCK就产生出来，它在读取不到数据时会回传-1，并且设置errno为EAGAIN。
+	//在发送的时候O_NDELAY会使得tcp协议栈不要凑大包，马上把目前数据发送出去
 	fcntl(fd, F_SETFL, flag | O_NONBLOCK);
 }
 
