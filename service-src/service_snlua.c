@@ -20,17 +20,17 @@
 #define MICROSEC 1000000
 
 // #define DEBUG_LOG
-
+// 定义的内存报警阈值
 #define MEMORY_WARNING_REPORT (1024 * 1024 * 32)
 
 struct snlua {
-	lua_State * L;
-	struct skynet_context * ctx;
-	size_t mem;
-	size_t mem_report;
-	size_t mem_limit;
-	lua_State * activeL;
-	ATOM_INT trap;
+	lua_State * L;//lua虚拟机
+	struct skynet_context * ctx;//关联的actor对象结构
+	size_t mem;//已分配内存
+	size_t mem_report;//内存报警阀值
+	size_t mem_limit;//内存限制上限
+	lua_State * activeL;//不知道干啥
+	ATOM_INT trap;//调试旗标
 };
 
 // LUA_CACHELIB may defined in patched lua for shared proto
@@ -451,12 +451,12 @@ init_cb(struct snlua *l, struct skynet_context *ctx, const char * args, size_t s
 
 	return 0;
 }
-
+//snlua的回调函数
 static int
 launch_cb(struct skynet_context * context, void *ud, int type, int session, uint32_t source , const void * msg, size_t sz) {
 	assert(type == 0 && session == 0);
 	struct snlua *l = ud;
-	skynet_callback(context, NULL, NULL);
+	skynet_callback(context, NULL, NULL);//把actor回调函数设置为空，应该是在lua里面会重新设置回调函数
 	int err = init_cb(l, context, msg, sz);
 	if (err) {
 		skynet_command(context, "EXIT", NULL);
@@ -464,16 +464,18 @@ launch_cb(struct skynet_context * context, void *ud, int type, int session, uint
 
 	return 0;
 }
-
+//snlua的初始化函数
 int
 snlua_init(struct snlua *l, struct skynet_context *ctx, const char * args) {
+	//复制参数
 	int sz = strlen(args);
 	char * tmp = skynet_malloc(sz);
 	memcpy(tmp, args, sz);
+	//设置回调函数到actor对象的回调指针
 	skynet_callback(ctx, l , launch_cb);
-	const char * self = skynet_command(ctx, "REG", NULL);
+	const char * self = skynet_command(ctx, "REG", NULL);//输出ctx的handle到self
 	uint32_t handle_id = strtoul(self+1, NULL, 16);
-	// it must be first message
+	// it must be first message给这个actor发送一个消息，把参数发过去
 	skynet_send(ctx, 0, handle_id, PTYPE_TAG_DONTCOPY,0, tmp, sz);
 	return 0;
 }
@@ -497,29 +499,36 @@ lalloc(void * ud, void *ptr, size_t osize, size_t nsize) {
 	}
 	return skynet_lalloc(ptr, osize, nsize);
 }
-
+//snlua的创建函数
 struct snlua *
 snlua_create(void) {
+	//分配一个snlua的数据结构
 	struct snlua * l = skynet_malloc(sizeof(*l));
 	memset(l,0,sizeof(*l));
+	//设置内存警告阈值
 	l->mem_report = MEMORY_WARNING_REPORT;
+	//设置内存上限
 	l->mem_limit = 0;
+	//分配一个lua虚拟机
 	l->L = lua_newstate(lalloc, l);
 	l->activeL = NULL;
+	//trap设置为0
 	ATOM_INIT(&l->trap , 0);
 	return l;
 }
-
+//释放snlua
 void
 snlua_release(struct snlua *l) {
+	//释放lua虚拟机
 	lua_close(l->L);
+	//释放snlua结构体
 	skynet_free(l);
 }
-
+//actor对动态库的控制命令
 void
 snlua_signal(struct snlua *l, int signal) {
 	skynet_error(l->ctx, "recv a signal %d", signal);
-	if (signal == 0) {
+	if (signal == 0) {//设置调试
 		if (ATOM_LOAD(&l->trap) == 0) {
 			int zero = 0;
 			// only one thread can set trap ( l->trap 0->1 )
@@ -530,7 +539,7 @@ snlua_signal(struct snlua *l, int signal) {
 			int one = 1;
 			ATOM_CAS(&l->trap, one, -1);
 		}
-	} else if (signal == 1) {
+	} else if (signal == 1) {//打印当前虚拟机内存
 		skynet_error(l->ctx, "Current Memory %.3fK", (float)l->mem / 1024);
 	}
 }

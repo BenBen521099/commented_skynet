@@ -419,7 +419,7 @@ cmd_timeout(struct skynet_context * context, const char * param) {
 	sprintf(context->result, "%d", session);
 	return context->result;
 }
-
+//actor名字和句柄建立联系
 static const char *
 cmd_reg(struct skynet_context * context, const char * param) {
 	if (param == NULL || param[0] == '\0') {
@@ -662,21 +662,21 @@ cmd_signal(struct skynet_context * context, const char * param) {
 
 static struct command_func cmd_funcs[] = {
 	{ "TIMEOUT", cmd_timeout },
-	{ "REG", cmd_reg },
+	{ "REG", cmd_reg },//actor句柄和名字建立联系，相当于注册
 	{ "QUERY", cmd_query },
-	{ "NAME", cmd_name },
-	{ "EXIT", cmd_exit },
-	{ "KILL", cmd_kill },
-	{ "LAUNCH", cmd_launch },
-	{ "GETENV", cmd_getenv },
-	{ "SETENV", cmd_setenv },
-	{ "STARTTIME", cmd_starttime },
-	{ "ABORT", cmd_abort },
-	{ "MONITOR", cmd_monitor },
-	{ "STAT", cmd_stat },
-	{ "LOGON", cmd_logon },
-	{ "LOGOFF", cmd_logoff },
-	{ "SIGNAL", cmd_signal },
+	{ "NAME", cmd_name },//还是注册
+	{ "EXIT", cmd_exit },//释放句柄
+	{ "KILL", cmd_kill },//释放句柄
+	{ "LAUNCH", cmd_launch },//创建actor对象
+	{ "GETENV", cmd_getenv },//获取存储全局变量的lua虚拟机的全局变量表
+	{ "SETENV", cmd_setenv },//设置全局变量
+	{ "STARTTIME", cmd_starttime },//输出开始时间
+	{ "ABORT", cmd_abort },//释放handle_storage所有对象
+	{ "MONITOR", cmd_monitor },//不知道幹啥用
+	{ "STAT", cmd_stat },//获取调试状态
+	{ "LOGON", cmd_logon },//打开日志文件
+	{ "LOGOFF", cmd_logoff },//关闭日志文件
+	{ "SIGNAL", cmd_signal },//往service（动态库里面生成的对象）对象发送信号
 	{ NULL, NULL },
 };
 

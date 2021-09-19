@@ -12,8 +12,8 @@
 #define MAX_SLOT_SIZE 0x40000000
 
 struct handle_name {
-	char * name;
-	uint32_t handle;
+	char * name;//名字
+	uint32_t handle;//对应的句柄
 };
 
 struct handle_storage {
@@ -70,7 +70,7 @@ skynet_handle_register(struct skynet_context *ctx) {
 		s->slot_size *= 2;
 	}
 }
-
+//释放记录句柄的容器结构
 int
 skynet_handle_retire(uint32_t handle) {
 	int ret = 0;
@@ -109,7 +109,7 @@ skynet_handle_retire(uint32_t handle) {
 
 	return ret;
 }
-
+//释放容器中所有的对象
 void 
 skynet_handle_retireall() {
 	struct handle_storage *s = H;
@@ -133,7 +133,7 @@ skynet_handle_retireall() {
 			return;
 	}
 }
-
+//增加句柄的引用计数
 struct skynet_context * 
 skynet_handle_grab(uint32_t handle) {
 	struct handle_storage *s = H;
@@ -152,7 +152,7 @@ skynet_handle_grab(uint32_t handle) {
 
 	return result;
 }
-
+//用名字查找句柄
 uint32_t 
 skynet_handle_findname(const char * name) {
 	struct handle_storage *s = H;
@@ -209,7 +209,7 @@ _insert_name_before(struct handle_storage *s, char *name, uint32_t handle, int b
 	s->name[before].handle = handle;
 	s->name_count ++;
 }
-
+//插入名字和对应句柄
 static const char *
 _insert_name(struct handle_storage *s, const char * name, uint32_t handle) {
 	int begin = 0;
@@ -234,7 +234,7 @@ _insert_name(struct handle_storage *s, const char * name, uint32_t handle) {
 
 	return result;
 }
-
+//把名字和actor的句柄建立联系
 const char * 
 skynet_handle_namehandle(uint32_t handle, const char *name) {
 	rwlock_wlock(&H->lock);
@@ -245,7 +245,7 @@ skynet_handle_namehandle(uint32_t handle, const char *name) {
 
 	return ret;
 }
-
+//初始化容器，存放名字和actor句柄
 void 
 skynet_handle_init(int harbor) {
 	assert(H==NULL);
