@@ -383,14 +383,17 @@ static int
 init_cb(struct snlua *l, struct skynet_context *ctx, const char * args, size_t sz) {
 	lua_State *L = l->L;
 	l->ctx = ctx;
+	//设置为不要gc
 	lua_gc(L, LUA_GCSTOP, 0);
 	lua_pushboolean(L, 1);  /* signal for libraries to ignore env. vars. */
 	lua_setfield(L, LUA_REGISTRYINDEX, "LUA_NOENV");
 	luaL_openlibs(L);
+	//注册性能检测函数到lua主要是resume和wrap函数
 	luaL_requiref(L, "skynet.profile", init_profile, 0);
 
 	int profile_lib = lua_gettop(L);
 	// replace coroutine.resume / coroutine.wrap
+	//替换lua携程的两个重要函数resume，wrap进入我们的函数，加入性能检测代码，有点类似于c的函数hook
 	lua_getglobal(L, "coroutine");
 	lua_getfield(L, profile_lib, "resume");
 	lua_setfield(L, -2, "resume");
@@ -398,14 +401,14 @@ init_cb(struct snlua *l, struct skynet_context *ctx, const char * args, size_t s
 	lua_setfield(L, -2, "wrap");
 
 	lua_settop(L, profile_lib-1);
-
+    //设置ctx指针进入lua
 	lua_pushlightuserdata(L, ctx);
 	lua_setfield(L, LUA_REGISTRYINDEX, "skynet_context");
 	luaL_requiref(L, "skynet.codecache", codecache , 0);
 	lua_pop(L,1);
 
 	lua_gc(L, LUA_GCGEN, 0, 0);
-
+    //设置几个全局变量LUA_PATH，LUA_CPATH，LUA_SERVICE，LUA_PRELOAD
 	const char *path = optstring(ctx, "lua_path","./lualib/?.lua;./lualib/?/init.lua");
 	lua_pushstring(L, path);
 	lua_setglobal(L, "LUA_PATH");
@@ -430,14 +433,14 @@ init_cb(struct snlua *l, struct skynet_context *ctx, const char * args, size_t s
 		report_launcher_error(ctx);
 		return 1;
 	}
-	lua_pushlstring(L, args, sz);
+	lua_pushlstring(L, args, sz);//参数传入lua并运行loader.lua
 	r = lua_pcall(L,1,0,1);
 	if (r != LUA_OK) {
 		skynet_error(ctx, "lua loader error : %s", lua_tostring(L, -1));
 		report_launcher_error(ctx);
 		return 1;
 	}
-	lua_settop(L,0);
+	lua_settop(L,0);//清空栈顶
 	if (lua_getfield(L, LUA_REGISTRYINDEX, "memlimit") == LUA_TNUMBER) {
 		size_t limit = lua_tointeger(L, -1);
 		l->mem_limit = limit;
@@ -447,7 +450,7 @@ init_cb(struct snlua *l, struct skynet_context *ctx, const char * args, size_t s
 	}
 	lua_pop(L, 1);
 
-	lua_gc(L, LUA_GCRESTART, 0);
+	lua_gc(L, LUA_GCRESTART, 0);//打开gc
 
 	return 0;
 }
