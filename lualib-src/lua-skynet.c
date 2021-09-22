@@ -505,18 +505,18 @@ luaopen_skynet_core(lua_State *L) {
 		{ "hpc", lhpc },	// getHPCounter
 		{ NULL, NULL },
 	};
-
+    //创建一个table，这个table在栈顶
 	lua_createtable(L, 0, sizeof(l)/sizeof(l[0]) + sizeof(l2)/sizeof(l2[0]) -2);
 
-	lua_getfield(L, LUA_REGISTRYINDEX, "skynet_context");
-	struct skynet_context *ctx = lua_touserdata(L,-1);
+	lua_getfield(L, LUA_REGISTRYINDEX, "skynet_context");//得到lua全局注册表中skynet_context对应的值并放在堆栈顶，lua_getfield获取表的一个值
+	struct skynet_context *ctx = lua_touserdata(L,-1);//得到刚才获得值
 	if (ctx == NULL) {
 		return luaL_error(L, "Init skynet context first");
 	}
 
-
+    //把c函数注册到Lua中，这样lua就可以调用c函数了,註冊的時候把ctx作為上值傳入這樣，每次調用的時候ctx作為調用的參數傳入c函數
 	luaL_setfuncs(L,l,1);
-
+    //註冊這些函數不需要ctx作為上值，這些是不需要actor上下文的函數
 	luaL_setfuncs(L,l2,0);
 
 	return 1;

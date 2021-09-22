@@ -17,7 +17,7 @@ local traceback = debug.traceback
 local cresume = coroutine.resume
 local running_thread = nil
 local init_thread = nil
-
+--恢复一个携程
 local function coroutine_resume(co, ...)
 	running_thread = co
 	return cresume(co, ...)
@@ -26,6 +26,7 @@ local coroutine_yield = coroutine.yield
 local coroutine_create = coroutine.create
 
 local proto = {}
+--skynet的消息类型，非常核心的数据结构
 local skynet = {
 	-- read skynet.h
 	PTYPE_TEXT = 0,
@@ -245,7 +246,7 @@ end
 -- coroutine reuse
 
 local coroutine_pool = setmetatable({}, { __mode = "kv" })
-
+--创建携程但是不会运行，需要调用coroutine_resume才会运行携程
 local function co_create(f)
 	local co = tremove(coroutine_pool)
 	if co == nil then
@@ -276,19 +277,21 @@ local function co_create(f)
 				f = nil
 				coroutine_pool[#coroutine_pool+1] = co
 				-- recv new main function f
-				f = coroutine_yield "SUSPEND"
+				f = coroutine_yield "SUSPEND"--传出去参数ture "SUSPEND"给外面的 suspend函数，suspend函数会走这个逻辑dispatch_wakeup
+				--运行到这里f已经通过coroutine_resume函数被重新赋值成新的执行函数了
+				--一个很令人迷惑的技巧，本来是可以直接运行的这里又yield出去了，为了再次从yield返回中获得参数表
 				f(coroutine_yield())
 			end
 		end)
 	else
 		-- pass the main function f to coroutine, and restore running thread
 		local running = running_thread
-		coroutine_resume(co, f)
+		coroutine_resume(co, f)--这个地方并不会直接运行携程只是做到了携程函数f的重新赋值，需要再次调用coroutine_resume传参后才会真的运行f函数
 		running_thread = running
 	end
 	return co
 end
-
+--重新运行之前sleep后来会唤醒的携程，如主动sleep的携程
 local function dispatch_wakeup()
 	while true do
 		local token = tremove(wakeup_queue,1)
@@ -309,8 +312,10 @@ local function dispatch_wakeup()
 end
 
 -- suspend is local function
+--suspend携程运行完之后如果result是false就正常的结束携程
+--如果不是false就是携程中由于其他原因挂起了根据command来处理
 function suspend(co, result, command)
-	if not result then
+	if not result then--如果携程return了就销毁携程
 		local session = session_coroutine_id[co]
 		if session then -- coroutine may fork by others (session is nil)
 			local addr = session_coroutine_address[co]
@@ -329,7 +334,8 @@ function suspend(co, result, command)
 		coroutine.close(co)
 		error(tb)
 	end
-	if command == "SUSPEND" then
+	--如果携程返回ture说明携程只是yield出来了并没有执行完逻辑
+	if command == "SUSPEND" then--说明携程执行完了逻辑把自己挂到携程池了
 		return dispatch_wakeup()
 	elseif command == "QUIT" then
 		coroutine.close(co)
@@ -379,7 +385,7 @@ function skynet.timeout(ti, func)
 	session_id_coroutine[session] = co
 	return co	-- for debug
 end
-
+--把当前携程放入sleep列表并yield出去
 local function suspend_sleep(session, token)
 	local tag = session_coroutine_tracetag[running_thread]
 	if tag then c.trace(tag, "sleep", 2) end
@@ -389,7 +395,7 @@ local function suspend_sleep(session, token)
 
 	return coroutine_yield "SUSPEND"
 end
-
+--设置了定时器，然后把自己挂起
 function skynet.sleep(ti, token)
 	local session = c.intcommand("TIMEOUT",ti)
 	assert(session)
@@ -409,7 +415,7 @@ end
 function skynet.yield()
 	return skynet.sleep(0)
 end
-
+--挂起当前携程或者参数指定的携程
 function skynet.wait(token)
 	local session = c.genid()
 	token = token or coroutine.running()
@@ -750,7 +756,7 @@ function skynet.dispatch_unknown_response(unknown)
 	unknown_response = unknown
 	return prev
 end
-
+--生成一个携程，但是不会被马上调用，在消息分发函数skynet.dispatch_message中会被调度
 function skynet.fork(func,...)
 	local n = select("#", ...)
 	local co
@@ -770,7 +776,7 @@ local trace_source = {}
 
 local function raw_dispatch_message(prototype, msg, sz, session, source)
 	-- skynet.PTYPE_RESPONSE = 1, read skynet.h
-	if prototype == 1 then
+	if prototype == 1 then--如果是个回应消息就唤醒休眠的携程
 		local co = session_id_coroutine[session]
 		if co == "BREAK" then
 			session_id_coroutine[session] = nil
@@ -784,25 +790,25 @@ local function raw_dispatch_message(prototype, msg, sz, session, source)
 		end
 	else
 		local p = proto[prototype]
-		if p == nil then
-			if prototype == skynet.PTYPE_TRACE then
+		if p == nil then--如果这个消息没有注册
+			if prototype == skynet.PTYPE_TRACE then--这个消息是统计性能使用的不需要单独的注册
 				-- trace next request
 				trace_source[source] = c.tostring(msg,sz)
-			elseif session ~= 0 then
+			elseif session ~= 0 then--如果没有注册消息且需要返回回应就返回错误回应
 				c.send(source, skynet.PTYPE_ERROR, session, "")
-			else
+			else--不然就抛弃这个消息
 				unknown_request(session, source, msg, sz, prototype)
 			end
 			return
 		end
 
-		local f = p.dispatch
-		if f then
-			local co = co_create(f)
-			session_coroutine_id[co] = session
-			session_coroutine_address[co] = source
+		local f = p.dispatch--skynet.dispatch时候设置的
+		if f then--如果设置了分发函数
+			local co = co_create(f)--创建一个新的携程
+			session_coroutine_id[co] = session--设置携程的session
+			session_coroutine_address[co] = source--设置携程的源地址
 			local traceflag = p.trace
-			if traceflag == false then
+			if traceflag == false then--根据性能统计旗标做一些逻辑
 				-- force off
 				trace_source[source] = nil
 				session_coroutine_tracetag[co] = false
@@ -818,8 +824,9 @@ local function raw_dispatch_message(prototype, msg, sz, session, source)
 					skynet.trace()
 				end
 			end
+			--coroutine_resume调度运行新创建的携程，等待返回之后，suspend销毁或者挂起携程
 			suspend(co, coroutine_resume(co, session,source, p.unpack(msg,sz)))
-		else
+		else--如果没有找到分发处理函数就返回错误或者丢弃消息
 			trace_source[source] = nil
 			if session ~= 0 then
 				c.send(source, skynet.PTYPE_ERROR, session, "")
@@ -829,9 +836,10 @@ local function raw_dispatch_message(prototype, msg, sz, session, source)
 		end
 	end
 end
-
+--lua分发消息的核心函数
 function skynet.dispatch_message(...)
-	local succ, err = pcall(raw_dispatch_message,...)
+	local succ, err = pcall(raw_dispatch_message,...)--先调用raw_dispatch_message来处理
+	--接下来调度其他的携程，skynet.fork生成的携程不会被马上的执行会放入一个对列中fork_queue，在这里调度这种携程
 	while true do
 		if fork_queue.h > fork_queue.t then
 			-- queue is empty
@@ -945,7 +953,7 @@ function skynet.init_service(start)
 end
 
 function skynet.start(start_func)
-	c.callback(skynet.dispatch_message)
+	c.callback(skynet.dispatch_message)--重新设置actor的callback函数为lua的dispatch_message函数这个很重要把消息的分发处理权力从c，移交到了lua
 	init_thread = skynet.timeout(0, function()
 		skynet.init_service(start_func)
 		init_thread = nil

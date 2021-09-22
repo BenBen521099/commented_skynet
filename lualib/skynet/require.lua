@@ -8,26 +8,26 @@
 
 local M = {}
 
-local mainthread, ismain = coroutine.running()
-assert(ismain, "skynet.require must initialize in main thread")
+local mainthread, ismain = coroutine.running()--返回当前运行的携程id，和是否是主携程
+assert(ismain, "skynet.require must initialize in main thread")--如果不是主携程则报错
 
 local context = {
 	[mainthread] = {},
 }
 
 do
-	local require = _G.require
-	local loaded = package.loaded
+	local require = _G.require--在loader.lua调用了这个文件替换系统的require函数
+	local loaded = package.loaded--用于记录那些模块已经被加载了
 	local loading = {}
 
-	function M.require(name)
-		local m = loaded[name]
+	function M.require(name)--以后所有的require都是走这个函数而不是标准的lua系统
+		local m = loaded[name]--查看模块是否已经加载过了
 		if m ~= nil then
 			return m
 		end
 
 		local co, main = coroutine.running()
-		if main then
+		if main then--如果在主携程中，利用系统的require函数加载模块
 			return require(name)
 		end
 

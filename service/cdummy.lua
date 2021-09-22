@@ -6,6 +6,7 @@ local queryname = {}
 local harbor = {}
 local harbor_service
 
+--把协议的名字和id注册到proto表中，以后当lua接管了消息分发权限的时候，skynet.dispatch_message使用这个table来处理消息
 skynet.register_protocol {
 	name = "harbor",
 	id = skynet.PTYPE_HARBOR,
@@ -67,8 +68,10 @@ end
 
 skynet.start(function()
 	local harbor_id = tonumber(skynet.getenv "harbor")
-	assert(harbor_id == 0)
-
+	--print("cdummy.lua harbor_id="..harbor_id)
+	assert(harbor_id == 0)--如果参数为false触发异常，也就是说这个服务必须是在harbor设置为0的时候才能启动
+	--print("cdummy.lua harbor_id="..harbor_id)
+	--设置消息类型和相应的处理函数，这个函数会作为携程被创建和调度运行
 	skynet.dispatch("lua", function (session,source,command,...)
 		local f = assert(harbor[command])
 		f(...)

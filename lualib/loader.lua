@@ -1,6 +1,7 @@
 local args = {}--存放传进来的参数
 for word in string.gmatch(..., "%S+") do--拆分参数放入table中
 	table.insert(args, word)
+	print(word)
 end
 
 SERVICE_NAME = args[1]--默认第一个参数是服务名
@@ -10,6 +11,7 @@ local main, pattern
 local err = {}
 for pat in string.gmatch(LUA_SERVICE, "([^;]+);*") do--拆分服务名，服务名也是有规则的不然拆不出来文件名
 	local filename = string.gsub(pat, "?", SERVICE_NAME)
+	print("filename="..filename)
 	local f, msg = loadfile(filename)
 	if not f then
 		table.insert(err, msg)
