@@ -351,12 +351,12 @@ function socket.readall(id)
 	assert(s.connected == false)
 	return driver.readall(s.buffer, s.pool)
 end
-
+--返回一段数据以sep为分隔符
 function socket.readline(id, sep)
 	sep = sep or "\n"
 	local s = socket_pool[id]
 	assert(s)
-	local ret = driver.readline(s.buffer, s.pool, sep)
+	local ret = driver.readline(s.buffer, s.pool, sep)--读到数据直接返回
 	if ret then
 		return ret
 	end
@@ -365,7 +365,7 @@ function socket.readline(id, sep)
 	end
 	assert(not s.read_required)
 	s.read_required = sep
-	suspend(s)
+	suspend(s)--没有读到数据挂起自己
 	if s.connected then
 		return driver.readline(s.buffer, s.pool, sep)
 	else
@@ -409,6 +409,7 @@ end
 
 -- abandon use to forward socket id to other service
 -- you must call socket.start(id) later in other service
+--用于清除 socket id 在本服务内的数据结构，但并不关闭这个 socket ，可用于向其他服务转交socket控制权。
 function socket.abandon(id)
 	local s = socket_pool[id]
 	if s then
