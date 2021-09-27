@@ -470,7 +470,7 @@ static int
 lclose(lua_State *L) {
 	int id = luaL_checkinteger(L,1);
 	struct skynet_context * ctx = lua_touserdata(L, lua_upvalueindex(1));
-	skynet_socket_close(ctx, id);
+	skynet_socket_close(ctx, id);//给网络线程发送管道命令，关闭一个socket
 	return 0;
 }
 

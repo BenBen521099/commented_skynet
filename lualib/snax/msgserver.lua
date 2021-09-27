@@ -96,6 +96,7 @@ function server.username(uid, subid, servername)
 	return string.format("%s@%s#%s", b64encode(uid), b64encode(servername), b64encode(tostring(subid)))
 end
 
+--gateserver调回来的处理用户登出
 function server.logout(username)
 	local u = user_online[username]
 	user_online[username] = nil
@@ -104,7 +105,7 @@ function server.logout(username)
 		connection[u.fd] = nil
 	end
 end
-
+--玩家登录记录玩家信息
 function server.login(username, secret)
 	assert(user_online[username] == nil)
 	user_online[username] = {

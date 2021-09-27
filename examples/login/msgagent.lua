@@ -10,7 +10,7 @@ local gate
 local userid, subid
 
 local CMD = {}
-
+--gateserver调过来的，记录玩家登陆了
 function CMD.login(source, uid, sid, secret)
 	-- you may use secret to make a encrypted data stream
 	skynet.error(string.format("%s is login", uid))
@@ -19,7 +19,7 @@ function CMD.login(source, uid, sid, secret)
 	subid = sid
 	-- you may load user data from database
 end
-
+--玩家登出了，释放这个agent
 local function logout()
 	if gate then
 		skynet.call(gate, "lua", "logout", userid, subid)

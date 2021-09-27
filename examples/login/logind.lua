@@ -43,7 +43,7 @@ function server.login_handler(server, uid, secret)
 end
 
 local CMD = {}
---注册gateserver
+--gateserver调过来的，注册gateserver
 function CMD.register_gate(server, address)
 	server_list[server] = address--server_list到底存的gameserver还是gateserver？这么混乱是云风写的代码么？
 end

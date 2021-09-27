@@ -78,7 +78,7 @@ local function launch_slave(auth_handler)
 
 		local token = crypt.desdecode(secret, crypt.base64decode(etoken))
 
-		local ok, server, uid =  pcall(auth_handler,token)--生成了token调用server.auth_handler(token)
+		local ok, server, uid =  pcall(auth_handler,token)--生成了token调用server.auth_handler(token)（logind）
 
 		return ok, server, uid, secret
 	end
@@ -184,13 +184,13 @@ local function launch_master(conf)
 		socket.close_fd(fd)	-- We haven't call socket.start, so use socket.close_fd rather than socket.close.
 	end)
 end
---conf logind.lua 相应的处理句柄
+--conf logind.lua 相应的处理句柄，这个函数logind调过来的
 local function login(conf)
 	local name = "." .. (conf.name or "login")
 	skynet.start(function()
 		local loginmaster = skynet.localname(name)--先用服务名字查服务句柄
 		if loginmaster then
-			local auth_handler = assert(conf.auth_handler)
+			local auth_handler = assert(conf.auth_handler)--logind负责解析client传过来的token
 			launch_master = nil
 			conf = nil
 			launch_slave(auth_handler)
@@ -199,7 +199,7 @@ local function login(conf)
 			conf.auth_handler = nil
 			assert(conf.login_handler)
 			assert(conf.command_handler)
-			skynet.register(name)--注册自己，和这个名字建立联系
+			skynet.register(name)--注册自己，和这个名字建立联系.login_master
 			launch_master(conf)--启动login的主服务
 		end
 	end)
